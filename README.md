@@ -1,136 +1,59 @@
-# The Pantheon — Autonomous AI Newsroom
+# The Pantheon
+*An autonomous AI newsroom control panel for monitoring agents, articles, pipelines, logs, metrics, and oracle feeds in one Next.js dashboard.*
 
-A real-time dashboard for an autonomous AI news pipeline. Three agents — **Kratos** (orchestrator), **Loki** (scout), and **Mimir** (publisher) — work together on an 8-hour cycle to scrape, process, and publish AI news articles.
+![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white)
+![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=white)
+![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white)
+![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white)
+![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white)
 
-Built with Next.js 16, React 19, Tailwind CSS v4, shadcn/ui, Framer Motion, and Supabase.
+## Overview
+The Pantheon is a Next.js App Router dashboard that acts like an “AI newsroom” ops console: it visualizes agents, articles, pipeline activity, and operational telemetry (logs, metrics, oracle feeds) in a single UI. It uses `@supabase/supabase-js` as the data layer and includes a `supabase/seed.sql` to quickly stand up realistic demo data. The UI is built as a reusable Radix + shadcn/ui-style component system (`components/ui`) with Tailwind CSS, plus `react-hook-form` + `zod` for robust form state and validation.
+
+## System Architecture
+```mermaid
+graph TD
+User[User Client] -->|REST| NextApp[Nextjs App]
+NextApp -->|JS SDK| Supabase[Supabase]
+Supabase -->|SQL| Postgres[Postgres Database]
+Postgres -->|Data| NextApp
+NextApp -->|Render| Dashboard[Dashboard Views]
+Dashboard -->|UI| Agents[Agents Panels]
+Dashboard -->|UI| Articles[Articles Panels]
+Dashboard -->|UI| Pipeline[Pipeline Timeline]
+Dashboard -->|UI| Logs[Log Feed]
+Dashboard -->|UI| Metrics[Metrics Panel]
+Dashboard -->|UI| Oracle[Oracle Feed]
+```
+
+## Tech Stack
+| Category | Technologies |
+|----------|-------------|
+| Frontend | ![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white) ![React](https://img.shields.io/badge/React-61DAFB?style=flat-square&logo=react&logoColor=white) ![Next.js](https://img.shields.io/badge/Next.js-000000?style=flat-square&logo=nextdotjs&logoColor=white) ![Tailwind](https://img.shields.io/badge/Tailwind-06B6D4?style=flat-square&logo=tailwindcss&logoColor=white) |
+| Database | ![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat-square&logo=postgresql&logoColor=white) |
+| Infra | ![Vercel](https://img.shields.io/badge/Vercel-000000?style=flat-square&logo=vercel&logoColor=white) |
 
 ## Quick Start
+Prerequisites: Node.js (TypeScript/Next.js 16), a Supabase project (Postgres), and environment variables for `@supabase/supabase-js`.
 
 ```bash
-# Install dependencies
+git clone https://github.com/shrikanthv15/the-pantheon.git
+cd the-pantheon
+
 npm install
 
-# Copy environment file and fill in your Supabase credentials
-cp .env.example .env.local
+# Seed your Supabase Postgres using the SQL in:
+# supabase/seed.sql
 
-# Start development server
+# Set Supabase env vars (commonly NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY)
+# then run:
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000).
-
-## Environment Variables
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_SUPABASE_URL` | Your Supabase project URL |
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Your Supabase anonymous/public key |
-
-The app runs with placeholder data when these are not set.
-
-## Supabase Schema
-
-The following tables are expected in your Supabase project:
-
-### `agents`
-| Column | Type | Description |
-|---|---|---|
-| id | text (PK) | `kratos`, `loki`, or `mimir` |
-| name | text | Display name |
-| role | text | Agent role |
-| status | text | `idle`, `running`, `complete`, `error` |
-| last_active | timestamptz | Last activity timestamp |
-| session_count | int4 | Total sessions |
-| tokens_this_cycle | int4 | Tokens used this cycle |
-| model | text | Model identifier |
-| heartbeat | text | Heartbeat interval |
-| color | text | Hex color |
-| accent_color | text | Hex accent color |
-| soul | text | Agent personality description |
-| mission | text[] | Array of mission items |
-
-### `articles`
-| Column | Type | Description |
-|---|---|---|
-| id | uuid (PK) | Auto-generated |
-| title | text | Article title |
-| slug | text | URL slug |
-| summary | text | Short summary |
-| body | text | Full article body |
-| category | text | `model_release`, `framework`, `github`, `funding`, `research`, `other` |
-| source_url | text | Original source URL |
-| published_at | timestamptz | Publish timestamp |
-| agent | text | Publishing agent (`mimir`) |
-| status | text | `published` |
-| cycle_id | text | Pipeline cycle identifier |
-
-### `pipeline_logs`
-| Column | Type | Description |
-|---|---|---|
-| id | uuid (PK) | Auto-generated |
-| timestamp | timestamptz | Log timestamp |
-| agent | text | `kratos`, `loki`, `mimir`, or `system` |
-| message | text | Log message |
-| level | text | `info`, `warn`, `error`, `success` |
-
-### `pipeline_state`
-| Column | Type | Description |
-|---|---|---|
-| id | int4 (PK) | Single row (1) |
-| status | text | Pipeline status |
-| last_run | timestamptz | Last run timestamp |
-| current_phase | text | Current active phase |
-| last_completed | timestamptz | Last completion timestamp |
-| article_count | int4 | Articles in last run |
-| error | text | Error message if any |
-
-### `agent_metrics`
-| Column | Type | Description |
-|---|---|---|
-| agent_id | text (PK) | Agent identifier |
-| tokens_used | int4 | Tokens consumed |
-| total_tokens | int4 | Token budget |
-| uptime | text | Uptime percentage |
-| memory_chunks | int4 | Memory chunks in use |
-
-## Architecture
-
-```
-VPS (DigitalOcean)                    Cloud
-┌─────────────────┐           ┌──────────────────┐
-│  OpenClaw Agent  │──logs───▶│    Supabase      │
-│  Pipeline        │──data───▶│  (PostgreSQL +   │
-│  (Kratos/Loki/  │           │   Realtime)      │
-│   Mimir)         │           └────────┬─────────┘
-└─────────────────┘                    │
-                                       │ reads
-                              ┌────────▼─────────┐
-                              │  This Website    │
-                              │  (Next.js on     │
-                              │   Vercel/VPS)    │
-                              └──────────────────┘
-```
-
-The VPS runs the agent pipeline. Agents write logs, articles, and state to Supabase. This website reads from Supabase and displays everything in real-time.
-
-## Scripts
-
-| Command | Description |
-|---|---|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run start` | Start production server |
-| `npm run lint` | Run ESLint |
-
-## Deployment
-
-This is a standard Next.js app deployable to Vercel, Cloudflare Pages, or self-hosted on the VPS:
-
-```bash
-npm run build
-npm run start
-```
-
-## License
-
-Private project by Shri / twoby2.dev
+## Key Features
+- **Newsroom-style ops dashboard**: dedicated views for agents, articles, pipeline activity, logs, metrics, and oracle feeds (e.g., `AgentCard`, `ArticleCard`, `PipelineLine`, `LogFeed`, `MetricsPanel`, `OracleFeed`).
+- **Supabase-backed data layer with seedable demo state**: `lib/supabase.ts` integrates `@supabase/supabase-js`, and `supabase/seed.sql` bootstraps the database for fast local/demo setup.
+- **Production-grade component system**: a large Radix-based UI kit under `components/ui` (shadcn/ui-style with `class-variance-authority`) keeps the dashboard consistent and composable.
+- **First-class UX polish**: theming via `next-themes` (global provider composition in `app/providers.tsx`) and motion via `framer-motion`.
+- **Type-safe forms and validation**: `react-hook-form` + `zod` patterns are wired for predictable client-side validation and ergonomics.
