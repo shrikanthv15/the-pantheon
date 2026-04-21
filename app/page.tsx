@@ -11,6 +11,7 @@ import { MetricsPanel } from '@/components/MetricsPanel';
 import { TaskBoard } from '@/components/TaskBoard';
 import { Footer } from '@/components/Footer';
 import {
+  agents as placeholderAgents,
   getAgents,
   getAgentMetrics,
   getArticles,
@@ -55,7 +56,10 @@ const sameTs = (a: { id: string }[], b: { id: string }[]) =>
   a.length === b.length && a.every((x, i) => x.id === b[i]?.id);
 
 export default function PantheonPage() {
-  const [agents, setAgents] = useState<Agent[]>([]);
+  // Seed with placeholder agent metadata so Hero + cards render on the
+  // first paint (otherwise HeroSection's null-guard hides everything until
+  // useEffect finishes its Supabase round-trip).
+  const [agents, setAgents] = useState<Agent[]>(placeholderAgents);
   const [metrics, setMetrics] = useState<AgentMetrics[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [articlesPerRun, setArticlesPerRun] = useState<{ run: string; articles: number }[]>([]);
@@ -148,14 +152,9 @@ export default function PantheonPage() {
               </p>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-              {agents.length === 0 && !loaded
-                ? Array.from({ length: 4 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className="rounded-xl border border-border bg-surface h-80 animate-pulse"
-                    />
-                  ))
-                : agents.map((agent) => <AgentCard key={agent.id} agent={agent} />)}
+              {agents.map((agent) => (
+                <AgentCard key={agent.id} agent={agent} />
+              ))}
             </div>
           </div>
         </motion.section>
