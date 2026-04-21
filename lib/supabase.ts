@@ -16,17 +16,26 @@ import type {
 } from '@/types';
 
 // ────────────────────────────────────────────────────────────────────────
-// Client — uses publishable/anon key. Service-role key is NEVER imported
-// client-side; it only exists server-side on the VPS in Hermes/Mimir env.
+// Client — uses the publishable (anon) key. This key is PUBLIC BY DESIGN
+// (it's what the browser JS would see anyway), and is gated by RLS policies
+// that only grant SELECT on the tables the dashboard renders. The
+// service-role / secret key is never touched here; it lives only on the
+// VPS in the openclaw-gateway systemd unit and Hermes's ~/.hermes/.env.
+//
+// Hard-coded defaults let the Vercel deploy work without any env-var
+// configuration. Environment variables still override them if set.
 // ────────────────────────────────────────────────────────────────────────
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-// Support both the legacy `ANON_KEY` name and the new `PUBLISHABLE_DEFAULT_KEY`
-// name Supabase rolled out in 2024.
+const DEFAULT_SUPABASE_URL = 'https://gfgqflrahwnbnqtdorly.supabase.co';
+const DEFAULT_SUPABASE_PUBLISHABLE_KEY =
+  'sb_publishable_ZPO11J7ILVibTmjQITE8Jw_QsbFkA7u';
+
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || DEFAULT_SUPABASE_URL;
 const supabaseAnonKey =
-  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY ??
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ??
-  '';
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY?.trim() ||
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY?.trim() ||
+  DEFAULT_SUPABASE_PUBLISHABLE_KEY;
 
 export const supabase: SupabaseClient | null =
   supabaseUrl && supabaseAnonKey ? createClient(supabaseUrl, supabaseAnonKey) : null;
@@ -120,29 +129,16 @@ const placeholderAgents: Agent[] = AGENT_ORDER.map((id) => ({
   tokensThisCycle: 0,
 }));
 
-const placeholderArticles: Article[] = [
-  {
-    id: '1',
-    title: 'Waiting for first Mimir publish',
-    slug: 'placeholder',
-    summary:
-      'No Supabase credentials detected. Drop NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY into .env.local and reload.',
-    body: '',
-    category: 'other',
-    source_url: 'https://github.com/shrikanthv15/VPS-Mirror',
-    published_at: new Date().toISOString(),
-    agent: 'mimir',
-    status: 'published',
-  },
-];
+const placeholderArticles: Article[] = [];
 
 const placeholderLogs: LogEntry[] = [
   {
     id: 'ph-1',
     timestamp: new Date().toISOString(),
     agent: 'system',
-    message: 'Supabase env not configured — showing placeholder data.',
-    level: 'warn',
+    message:
+      'Awaiting first event from Hermes sync — the VPS will push into task_events on the next heartbeat.',
+    level: 'info',
   },
 ];
 

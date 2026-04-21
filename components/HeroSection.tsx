@@ -51,6 +51,7 @@ export function HeroSection({ agents, pipelineState }: HeroSectionProps) {
   const kratos = agents.find((a) => a.id === 'kratos');
   const loki = agents.find((a) => a.id === 'loki');
   const mimir = agents.find((a) => a.id === 'mimir');
+  const hermes = agents.find((a) => a.id === 'hermes');
   if (!kratos || !loki || !mimir) return null;
 
   return (
@@ -84,24 +85,45 @@ export function HeroSection({ agents, pipelineState }: HeroSectionProps) {
         Kratos leads, Loki scouts, Mimir reviews, Hermes remembers.
       </motion.p>
 
-      {/* Pipeline visualization */}
+      {/* Pipeline visualization — Kratos/Loki/Mimir on the line, Hermes
+          floats above as the read-only observer. */}
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
-        className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-0 mb-12"
+        className="flex flex-col items-center mb-12"
       >
-        <AgentNode agent={kratos} />
-        <div className="hidden md:block">
-          <PipelineLine fromAgent="kratos" toAgent="loki" isActive={isActive} />
+        {/* Hermes observer node (top) */}
+        {hermes && (
+          <div className="relative mb-4 flex flex-col items-center">
+            <AgentNode agent={hermes} />
+            {/* Dashed lines descending toward each pipeline node to signal
+                "read-only observer" relationship. */}
+            <div className="hidden md:flex absolute top-full left-1/2 -translate-x-1/2 w-[760px] h-8 justify-between pointer-events-none">
+              <div className="w-0.5 h-8 border-l-2 border-dashed border-[#10b981]/40" />
+              <div className="w-0.5 h-8 border-l-2 border-dashed border-[#10b981]/40" />
+              <div className="w-0.5 h-8 border-l-2 border-dashed border-[#10b981]/40" />
+            </div>
+            <div className="md:hidden mt-2 text-xs font-mono text-[#34d399] tracking-widest">
+              OBSERVER ↓
+            </div>
+          </div>
+        )}
+
+        {/* Main pipeline row */}
+        <div className="flex flex-col md:flex-row items-center justify-center gap-4 md:gap-0">
+          <AgentNode agent={kratos} />
+          <div className="hidden md:block">
+            <PipelineLine fromAgent="kratos" toAgent="loki" isActive={isActive} />
+          </div>
+          <div className="md:hidden h-8 w-0.5 bg-gradient-to-b from-[#f59e0b] to-[#06b6d4]" />
+          <AgentNode agent={loki} />
+          <div className="hidden md:block">
+            <PipelineLine fromAgent="loki" toAgent="mimir" isActive={isActive} />
+          </div>
+          <div className="md:hidden h-8 w-0.5 bg-gradient-to-b from-[#06b6d4] to-[#8b5cf6]" />
+          <AgentNode agent={mimir} />
         </div>
-        <div className="md:hidden h-8 w-0.5 bg-gradient-to-b from-[#f59e0b] to-[#06b6d4]" />
-        <AgentNode agent={loki} />
-        <div className="hidden md:block">
-          <PipelineLine fromAgent="loki" toAgent="mimir" isActive={isActive} />
-        </div>
-        <div className="md:hidden h-8 w-0.5 bg-gradient-to-b from-[#06b6d4] to-[#8b5cf6]" />
-        <AgentNode agent={mimir} />
       </motion.div>
 
       {/* Last Pipeline Run stats */}
