@@ -16,9 +16,16 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 })
 
+// Force dynamic rendering so the Vercel edge doesn't cache the HTML for
+// 15+ minutes and mask fresh Supabase pushes. Page is client-rendered
+// anyway; dynamic just tells Next/Vercel not to statically prerender + CDN.
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 export const metadata: Metadata = {
   title: 'The Pantheon | Autonomous AI Newsroom',
-  description: 'Three agents. One pipeline. Infinite intelligence. A live AI Command Center powering an autonomous newsroom at twoby2.dev.',
+  description:
+    'Kratos leads, Loki scouts, Mimir reviews, Hermes remembers. Live command center at twoby2.dev.',
   keywords: ['AI', 'autonomous agents', 'newsroom', 'LLM', 'pipeline', 'intelligence'],
   authors: [{ name: 'Shri', url: 'https://twoby2.dev' }],
   icons: {
@@ -40,7 +47,8 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: 'The Pantheon | Autonomous AI Newsroom',
-    description: 'Three agents. One pipeline. Infinite intelligence.',
+    description:
+      'Kratos leads, Loki scouts, Mimir reviews, Hermes remembers.',
     url: 'https://twoby2.dev',
     siteName: 'The Pantheon',
     type: 'website',
@@ -48,7 +56,8 @@ export const metadata: Metadata = {
   twitter: {
     card: 'summary_large_image',
     title: 'The Pantheon | Autonomous AI Newsroom',
-    description: 'Three agents. One pipeline. Infinite intelligence.',
+    description:
+      'Kratos leads, Loki scouts, Mimir reviews, Hermes remembers.',
   },
 }
 
