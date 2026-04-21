@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback, useEffect, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Navigation } from '@/components/Navigation';
 import { HeroSection } from '@/components/HeroSection';
@@ -7,97 +8,205 @@ import { AgentCard } from '@/components/AgentCard';
 import { LogFeed, LogTicker } from '@/components/LogFeed';
 import { OracleFeed } from '@/components/OracleFeed';
 import { MetricsPanel } from '@/components/MetricsPanel';
+import { TaskBoard } from '@/components/TaskBoard';
 import { Footer } from '@/components/Footer';
-import { 
-  agents, 
-  placeholderArticles, 
-  placeholderLogs, 
-  pipelineState,
+import {
+  getAgents,
   getAgentMetrics,
+  getArticles,
+  getArticlesPerRun,
+  getAllTaskNotes,
+  getAllTaskSteps,
+  getHermesHeartbeat,
+  getLogs,
+  getPipelineState,
+  getTasks,
+  isSupabaseConfigured,
+  subscribeToArticles,
+  subscribeToHermesHeartbeat,
+  subscribeToTaskEvents,
+  subscribeToTasks,
 } from '@/lib/supabase';
-
-// Placeholder metrics - would be fetched from Supabase in production
-const metrics = [
-  { agentId: 'kratos' as const, tokensUsed: 1240, totalTokens: 10000, uptime: '99.9%', memoryChunks: 0 },
-  { agentId: 'loki' as const, tokensUsed: 3450, totalTokens: 10000, uptime: '99.7%', memoryChunks: 0 },
-  { agentId: 'mimir' as const, tokensUsed: 2100, totalTokens: 10000, uptime: '99.8%', memoryChunks: 0 },
-];
+import type {
+  Agent,
+  AgentMetrics,
+  Article,
+  HermesHeartbeat,
+  LogEntry,
+  PipelineState,
+  TaskEnvelope,
+  TaskNote,
+  TaskStep,
+} from '@/types';
 
 const containerVariants = {
   hidden: { opacity: 0 },
-  visible: {
-    opacity: 1,
-    transition: {
-      staggerChildren: 0.3,
-    },
-  },
+  visible: { opacity: 1, transition: { staggerChildren: 0.15 } },
 };
 
 const sectionVariants = {
-  hidden: { opacity: 0, y: 50 },
-  visible: { 
-    opacity: 1, 
-    y: 0,
-    transition: { duration: 0.6 }
-  },
+  hidden: { opacity: 0, y: 40 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
 };
 
+// Shallow event-list comparator so we don't re-render when a refetch
+// returns structurally identical data.
+const sameTs = (a: { id: string }[], b: { id: string }[]) =>
+  a.length === b.length && a.every((x, i) => x.id === b[i]?.id);
+
 export default function PantheonPage() {
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [metrics, setMetrics] = useState<AgentMetrics[]>([]);
+  const [articles, setArticles] = useState<Article[]>([]);
+  const [articlesPerRun, setArticlesPerRun] = useState<{ run: string; articles: number }[]>([]);
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [pipelineState, setPipelineState] = useState<PipelineState>({
+    status: 'idle',
+    last_run: null,
+    current_phase: null,
+    last_completed: null,
+    article_count: 0,
+    error: null,
+  });
+  const [tasks, setTasks] = useState<TaskEnvelope[]>([]);
+  const [steps, setSteps] = useState<TaskStep[]>([]);
+  const [taskNotes, setTaskNotes] = useState<TaskNote[]>([]);
+  const [heartbeat, setHeartbeat] = useState<HermesHeartbeat | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  const refresh = useCallback(async () => {
+    const [ag, mt, ar, ap, lg, ps, tk, hb] = await Promise.all([
+      getAgents(),
+      getAgentMetrics(),
+      getArticles(60),
+      getArticlesPerRun(),
+      getLogs(80),
+      getPipelineState(),
+      getTasks(10),
+      getHermesHeartbeat(),
+    ]);
+
+    setAgents(ag);
+    setMetrics(mt);
+    setArticles(ar);
+    setArticlesPerRun(ap);
+    setLogs((prev) => (sameTs(prev, lg) ? prev : lg));
+    setPipelineState(ps);
+    setTasks(tk);
+    setHeartbeat(hb);
+
+    const taskIds = tk.map((t) => t.id);
+    const [fetchedSteps, fetchedNotes] = await Promise.all([
+      getAllTaskSteps(taskIds),
+      getAllTaskNotes(taskIds, 3),
+    ]);
+    setSteps(fetchedSteps);
+    setTaskNotes(fetchedNotes);
+
+    setLoaded(true);
+  }, []);
+
+  // Initial load + Realtime subscriptions + 30 s safety refresh.
+  useEffect(() => {
+    refresh();
+
+    if (!isSupabaseConfigured()) return;
+
+    const unsubs = [
+      subscribeToArticles(refresh),
+      subscribeToTaskEvents(refresh),
+      subscribeToTasks(refresh),
+      subscribeToHermesHeartbeat(refresh),
+    ];
+    const iv = setInterval(refresh, 30_000);
+    return () => {
+      clearInterval(iv);
+      unsubs.forEach((u) => u());
+    };
+  }, [refresh]);
+
   return (
     <div className="min-h-screen bg-background grid-background">
-      {/* Section 1: Sticky Navigation */}
       <Navigation />
 
-      <motion.main
-        variants={containerVariants}
-        initial="hidden"
-        animate="visible"
-      >
-        {/* Section 2: Hero - Live Status Dashboard */}
+      <motion.main variants={containerVariants} initial="hidden" animate="visible">
+        {/* Hero */}
         <motion.div variants={sectionVariants}>
           <HeroSection agents={agents} pipelineState={pipelineState} />
         </motion.div>
 
-        {/* Section 3: Agent Detail Cards */}
-        <motion.section
-          id="agents"
-          variants={sectionVariants}
-          className="px-4 py-16"
-        >
+        {/* Agents (4 cards incl. Hermes) */}
+        <motion.section id="agents" variants={sectionVariants} className="px-4 py-16">
           <div className="max-w-7xl mx-auto">
             <div className="text-center mb-12">
               <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
                 THE AGENTS
               </h2>
               <p className="text-muted-foreground">
-                Meet the autonomous AI agents powering The Pantheon
+                Four autonomous roles on one VPS. Kratos leads, Loki scouts, Mimir reviews,
+                Hermes watches.
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {agents.map((agent) => (
-                <AgentCard key={agent.id} agent={agent} />
-              ))}
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              {agents.length === 0 && !loaded
+                ? Array.from({ length: 4 }).map((_, i) => (
+                    <div
+                      key={i}
+                      className="rounded-xl border border-border bg-surface h-80 animate-pulse"
+                    />
+                  ))
+                : agents.map((agent) => <AgentCard key={agent.id} agent={agent} />)}
             </div>
           </div>
         </motion.section>
 
-        {/* Section 4: Live Activity Feed */}
+        {/* Task Envelopes — what each agent is doing right now */}
         <motion.section
-          id="feed"
+          id="tasks"
           variants={sectionVariants}
           className="px-4 py-16 bg-surface-elevated"
         >
           <div className="max-w-5xl mx-auto">
-            <LogFeed logs={placeholderLogs} />
+            <div className="text-center mb-10">
+              <h2 className="text-3xl md:text-4xl font-bold text-foreground mb-2">
+                LIVE TASK BOARD
+              </h2>
+              <p className="text-muted-foreground">
+                Every envelope Kratos has opened, with the step each agent is running
+                and Mimir's commentary.
+              </p>
+              {heartbeat && (
+                <p className="mt-2 text-xs font-mono text-muted-foreground">
+                  Hermes last synced{' '}
+                  <span className="text-[#34d399]">
+                    {new Date(heartbeat.last_sync_at).toLocaleTimeString('en-US', {
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                      hour12: false,
+                    })}
+                  </span>{' '}
+                  UTC · {heartbeat.envelopes_seen} envelopes
+                </p>
+              )}
+            </div>
+            <TaskBoard tasks={tasks} steps={steps} notes={taskNotes} />
           </div>
         </motion.section>
 
-        {/* Section 5: The Oracle Feed (Articles) */}
+        {/* Log Feed */}
+        <motion.section id="feed" variants={sectionVariants} className="px-4 py-16">
+          <div className="max-w-5xl mx-auto">
+            <LogFeed logs={logs} />
+          </div>
+        </motion.section>
+
+        {/* Oracle Feed */}
         <motion.div variants={sectionVariants}>
-          <OracleFeed articles={placeholderArticles} />
+          <OracleFeed articles={articles} />
         </motion.div>
 
-        {/* Section 6: System Metrics */}
+        {/* Metrics */}
         <motion.section
           id="metrics"
           variants={sectionVariants}
@@ -109,19 +218,16 @@ export default function PantheonPage() {
                 SYSTEM METRICS
               </h2>
               <p className="text-muted-foreground">
-                Real-time operational intelligence
+                Real-time operational intelligence · computed from Supabase (
+                {isSupabaseConfigured() ? 'live' : 'placeholder'})
               </p>
             </div>
-            <MetricsPanel agents={agents} metrics={metrics} />
+            <MetricsPanel agents={agents} metrics={metrics} articlesPerRun={articlesPerRun} />
           </div>
         </motion.section>
 
-        {/* Section 7: Live Log Stream (Compact Ticker) */}
-        <motion.section
-          id="logs"
-          variants={sectionVariants}
-          className="px-4 py-8"
-        >
+        {/* Ticker */}
+        <motion.section id="logs" variants={sectionVariants} className="px-4 py-8">
           <div className="max-w-3xl mx-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
@@ -134,11 +240,10 @@ export default function PantheonPage() {
                 View Full Logs ↓
               </a>
             </div>
-            <LogTicker logs={placeholderLogs} />
+            <LogTicker logs={logs} />
           </div>
         </motion.section>
 
-        {/* Section 8: Footer */}
         <Footer pipelineState={pipelineState} />
       </motion.main>
     </div>

@@ -3,31 +3,23 @@
 import { motion } from 'framer-motion';
 import { Brain } from 'lucide-react';
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
-import type { Agent, AgentMetrics } from '@/types';
-
-// TODO: Replace all values with Supabase query to agent_metrics table
+import type { Agent, AgentId, AgentMetrics } from '@/types';
 
 interface MetricsPanelProps {
   agents: Agent[];
   metrics: AgentMetrics[];
+  articlesPerRun: { run: string; articles: number }[];
 }
 
-const agentColors = {
+const agentColors: Record<AgentId, string> = {
   kratos: '#f59e0b',
   loki: '#06b6d4',
   mimir: '#8b5cf6',
+  hermes: '#10b981',
 };
 
-// Placeholder data for articles per run chart
-const articlesPerRunData = [
-  { run: '1', articles: 6 },
-  { run: '2', articles: 8 },
-  { run: '3', articles: 5 },
-  { run: '4', articles: 7 },
-  { run: '5', articles: 9 },
-  { run: '6', articles: 6 },
-  { run: '7', articles: 8 },
-];
+const agentColor = (id: AgentId | string) =>
+  (agentColors as Record<string, string>)[id] ?? '#888';
 
 function TokenProgressBar({ agent, metrics }: { agent: Agent; metrics: AgentMetrics }) {
   const percentage = (metrics.tokensUsed / metrics.totalTokens) * 100;
@@ -95,16 +87,30 @@ function AgentHealthRow({ agent, metrics }: { agent: Agent; metrics: AgentMetric
   );
 }
 
-export function MetricsPanel({ agents, metrics }: MetricsPanelProps) {
+export function MetricsPanel({ agents, metrics, articlesPerRun }: MetricsPanelProps) {
   const totalTokens = metrics.reduce((sum, m) => sum + m.tokensUsed, 0);
-  const estimatedCost = (totalTokens / 1000000) * 3; // $3 per 1M tokens estimate
+  const totalRuns = metrics.reduce((sum, m) => sum + m.memoryChunks, 0);
+  const totalArticles = articlesPerRun.reduce((sum, r) => sum + r.articles, 0);
+  const avgArticles = articlesPerRun.length
+    ? Math.round((totalArticles / articlesPerRun.length) * 10) / 10
+    : 0;
+  const avgUptime =
+    metrics.length > 0
+      ? `${Math.round(
+          (metrics
+            .map((m) => parseFloat(m.uptime.replace('%', '')) || 0)
+            .reduce((a, b) => a + b, 0) /
+            metrics.length) *
+            10,
+        ) / 10}%`
+      : '—';
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true }}
-      className="grid grid-cols-1 md:grid-cols-3 gap-6"
+      className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6"
     >
       {/* Column 1: Token Economy */}
       <div className="rounded-xl border border-border bg-surface p-6">
@@ -132,9 +138,9 @@ export function MetricsPanel({ agents, metrics }: MetricsPanelProps) {
         })}
 
         <div className="mt-6 pt-4 border-t border-border">
-          <span className="text-xs text-muted-foreground">Estimated Cost</span>
+          <span className="text-xs text-muted-foreground">Successful Runs (24h)</span>
           <p className="text-xl font-bold text-foreground font-mono">
-            ${estimatedCost.toFixed(2)}
+            {totalTokens}
           </p>
         </div>
       </div>
@@ -147,28 +153,35 @@ export function MetricsPanel({ agents, metrics }: MetricsPanelProps) {
 
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div>
-            <span className="text-xs text-muted-foreground block">Avg Duration</span>
-            <p className="text-lg font-bold font-mono text-foreground">--</p>
-          </div>
-          <div>
             <span className="text-xs text-muted-foreground block">Articles/Cycle</span>
-            <p className="text-lg font-bold font-mono text-foreground">--</p>
+            <p className="text-lg font-bold font-mono text-foreground">
+              {avgArticles || '—'}
+            </p>
           </div>
           <div>
-            <span className="text-xs text-muted-foreground block">Success Rate</span>
-            <p className="text-lg font-bold font-mono text-[#10b981]">100%</p>
+            <span className="text-xs text-muted-foreground block">Total Articles</span>
+            <p className="text-lg font-bold font-mono text-foreground">{totalArticles}</p>
+          </div>
+          <div>
+            <span className="text-xs text-muted-foreground block">Avg Uptime</span>
+            <p className="text-lg font-bold font-mono text-[#10b981]">{avgUptime}</p>
           </div>
           <div>
             <span className="text-xs text-muted-foreground block">Total Runs</span>
-            <p className="text-lg font-bold font-mono text-foreground">0</p>
+            <p className="text-lg font-bold font-mono text-foreground">{totalRuns}</p>
           </div>
         </div>
 
         <div>
           <span className="text-xs text-muted-foreground block mb-2">Articles per Run</span>
           <div className="h-32">
+            {articlesPerRun.length === 0 ? (
+              <div className="h-full flex items-center justify-center text-xs text-muted-foreground font-mono">
+                no completed runs yet
+              </div>
+            ) : (
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={articlesPerRunData}>
+              <BarChart data={articlesPerRun}>
                 <XAxis 
                   dataKey="run" 
                   tick={{ fill: '#6b7280', fontSize: 10 }}
@@ -186,13 +199,14 @@ export function MetricsPanel({ agents, metrics }: MetricsPanelProps) {
                     fontSize: '12px',
                   }}
                 />
-                <Bar 
-                  dataKey="articles" 
-                  fill="#8b5cf6" 
+                <Bar
+                  dataKey="articles"
+                  fill="#8b5cf6"
                   radius={[4, 4, 0, 0]}
                 />
               </BarChart>
             </ResponsiveContainer>
+            )}
           </div>
         </div>
       </div>

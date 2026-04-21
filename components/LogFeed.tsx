@@ -11,10 +11,11 @@ interface LogFeedProps {
   compact?: boolean;
 }
 
-const agentColors = {
+const agentColors: Record<string, string> = {
   kratos: 'text-[#fbbf24]',
   loki: 'text-[#22d3ee]',
   mimir: 'text-[#a78bfa]',
+  hermes: 'text-[#34d399]',
   system: 'text-muted-foreground',
 };
 

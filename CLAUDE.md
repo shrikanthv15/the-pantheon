@@ -1,45 +1,103 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code when working in **the-pantheon** repo.
 
-## Project Overview
+## Project overview
 
-"The Pantheon" — an autonomous AI newsroom dashboard. A single-page Next.js app that visualizes a three-agent pipeline (Kratos → Loki → Mimir) which scrapes AI news, processes it, and publishes articles. The frontend is a dark-mode-only command-center UI with real-time pipeline status, agent cards, log feeds, article feeds, and system metrics.
+The Pantheon is the dashboard for Shri's OpenClaw multi-agent VPS
+(`kratos.twoby2.dev`). It visualises the four-agent stack —
+**Kratos** (leader), **Loki** (scout), **Mimir** (reviewer/publisher),
+**Hermes** (auditor) — reading from a Supabase Postgres project that
+Hermes syncs on the VPS.
+
+- VPS repo / operator-facing docs: https://github.com/shrikanthv15/VPS-Mirror
+- Supabase project: `gfgqflrahwnbnqtdorly`
+- Agent SOUL files: `agents/<id>/SOUL.md` in VPS-Mirror
+- Task envelope schema: `agents/shared/envelope.schema.json` in VPS-Mirror
+- Dashboard hosting plan: Vercel, DNS `pantheon.twoby2.dev` via Cloudflare
 
 ## Commands
 
-- `npm run dev` — Start dev server
-- `npm run build` — Production build
-- `npm run start` — Start production server
-- `npm run lint` — Run ESLint
+- `npm run dev` — start dev server
+- `npm run build` — production build
+- `npm run start` — production server
+- `npm run lint` — ESLint
 
 ## Architecture
 
-**Stack:** Next.js 16 (App Router) + React 19 + Tailwind CSS v4 + shadcn/ui (new-york style) + Framer Motion + Recharts
+**Stack:** Next.js 16 (App Router) + React 19 + Tailwind v4 + shadcn/ui
++ Framer Motion + Recharts + `@supabase/supabase-js`.
 
-**Data layer:** All data is currently placeholder, defined in `lib/supabase.ts`. Supabase client is commented out — `@supabase/supabase-js` is not yet in dependencies. Async query functions (`getAgents`, `getArticles`, `getLogs`, etc.) exist but return hardcoded data. The plan is to connect to a cloud Supabase instance.
+**Data layer** (`lib/supabase.ts`):
+- `createClient` uses `NEXT_PUBLIC_SUPABASE_URL` +
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_DEFAULT_KEY` (falls back to
+  `NEXT_PUBLIC_SUPABASE_ANON_KEY` for the legacy JWT name). If env vars
+  are missing, exports `supabase = null` and queries return safe
+  placeholder data — the page still renders.
+- Async readers: `getAgents`, `getArticles`, `getLogs`, `getTasks`,
+  `getAllTaskSteps`, `getAllTaskNotes`, `getAgentMetrics`,
+  `getArticlesPerRun`, `getPipelineState`, `getHermesHeartbeat`,
+  `getRecentSessions`.
+- Realtime subscriptions: `subscribeToArticles`, `subscribeToTaskEvents`,
+  `subscribeToTasks`, `subscribeToHermesHeartbeat`. All return a teardown fn.
+- **Service-role key is never referenced here.** Only used server-side on
+  the VPS by Mimir (publish) and Hermes (sync).
 
-**Page structure:** Single page at `app/page.tsx` ('use client') renders 8 sections in order:
-1. `Navigation` — sticky nav with scroll-spy active section highlighting
-2. `HeroSection` — pipeline visualization with `AgentNode` + `PipelineLine`, countdown timer, trigger button
-3. Agent Detail Cards — grid of `AgentCard` components with SVG avatars and sparklines
-4. `LogFeed` — terminal-style log viewer with pause/clear/copy/download controls
-5. `OracleFeed` — filterable/searchable article grid using `ArticleCard` components
-6. `MetricsPanel` — three-column metrics: token economy, pipeline performance (bar chart), agent health
-7. `LogTicker` — compact scrolling log ticker
-8. `Footer` — with `MiniPipelineVisualization`
+**Page structure** (`app/page.tsx` is a client component):
+1. `HeroSection` — pipeline graphic (3 nodes: Kratos/Loki/Mimir) + countdown
+2. Agent grid — 4 `AgentCard`s including Hermes
+3. `TaskBoard` — live envelopes with plan + Mimir commentary
+4. `LogFeed` — driven by `task_events` (kind → level mapping)
+5. `OracleFeed` — articles from Supabase
+6. `MetricsPanel` — token economy, articles-per-run bar chart, agent health
+7. `LogTicker` + `Footer`
 
-**Design system:** Dark-mode only. Custom CSS variables in `app/globals.css` define the palette. Agent colors: Kratos=#f59e0b (amber), Loki=#06b6d4 (cyan), Mimir=#8b5cf6 (violet). Custom animations: grid-background, scanlines, glow effects, pulse-glow, cursor-blink, travel-dot.
+Page loads data with `Promise.all`, subscribes to 4 Realtime channels,
+plus a 30 s safety `setInterval`.
 
-**Types:** All shared types in `types/index.ts` — `Agent`, `Article`, `LogEntry`, `PipelineState`, `AgentMetrics`.
+**Design system:** Dark-mode only. Agent palette:
 
-**Duplicate CSS:** `styles/globals.css` contains default shadcn theme (light+dark, oklch). The actual theme used is `app/globals.css`. Only `app/globals.css` is imported in the layout.
+| Agent  | Primary   | Accent    |
+|--------|-----------|-----------|
+| Kratos | `#f59e0b` | `#fbbf24` |
+| Loki   | `#06b6d4` | `#22d3ee` |
+| Mimir  | `#8b5cf6` | `#a78bfa` |
+| Hermes | `#10b981` | `#34d399` |
 
-## Key Gotchas
+Colour values live in `components/AgentCard.tsx` `colorClasses` and
+`components/MetricsPanel.tsx` `agentColors`.
 
-- `next.config.mjs` has `ignoreBuildErrors: true` — TypeScript errors won't fail builds
-- `TooltipProvider` is required by Radix tooltips but is NOT wrapped in `app/layout.tsx` — tooltips in `HeroSection` may not work
-- `ThemeProvider` component exists but is unused in the layout
-- No ESLint config file (`.eslintrc*`) exists despite the lint script
-- No `@supabase/supabase-js` in package.json yet
-- Environment variables needed: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+**Types** (`types/index.ts`): `AgentId`, `Agent`, `Article`, `LogEntry`,
+`PipelineState`, `AgentMetrics`, plus the envelope types `TaskEnvelope`,
+`TaskStep`, `TaskEvent`, `TaskNote`, `HermesHeartbeat`, `AgentSession`.
+
+## Env vars
+
+See `.env.example`. For local dev put them in `.env.local`.
+
+## Supabase tables read by this app
+
+All read-only via the publishable key (RLS anon-read policies live in
+`VPS-Mirror:agents/supabase/schema.sql`):
+
+- `tasks` — one row per envelope
+- `task_steps` — plan steps
+- `task_events` — append-only log (drives LogFeed)
+- `task_notes` — Mimir's running commentary
+- `articles` — published by Mimir
+- `agent_sessions` — per-run status/runtime
+- `hermes_heartbeat` — Hermes alive signal
+- `pipeline_state` — legacy flat mirror
+- `optimization_hints` — agent self-improvement hints
+- `hermes_log` — Hermes daily/weekly narratives
+
+## Key gotchas
+
+- `next.config.mjs` sets `ignoreBuildErrors: true` — lint warnings don't
+  fail builds.
+- Realtime needs `supabase_realtime` publication to include the tables.
+  Schema handles that; if you add new tables, add an `alter publication`
+  block.
+- When Supabase is unreachable (e.g. offline dev), every query returns
+  placeholder data; nothing crashes.
+- Do NOT import the service-role / secret key anywhere in this repo.

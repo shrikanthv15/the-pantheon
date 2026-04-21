@@ -1,20 +1,23 @@
 'use client';
 
-import { Shield, Zap, BookOpen } from 'lucide-react';
+import { Shield, Zap, BookOpen, Feather } from 'lucide-react';
 import { motion } from 'framer-motion';
-import type { Agent } from '@/types';
+import type { Agent, AgentId } from '@/types';
 
 interface AgentNodeProps {
   agent: Agent;
 }
 
-const iconMap = {
+const iconMap: Record<AgentId, typeof Shield> = {
   kratos: Shield,
   loki: Zap,
   mimir: BookOpen,
+  hermes: Feather,
 };
 
-const colorClasses = {
+const colorClasses: Record<AgentId, {
+  glow: string; border: string; text: string; bg: string; ring: string;
+}> = {
   kratos: {
     glow: 'shadow-[0_0_30px_rgba(245,158,11,0.4)]',
     border: 'border-[#f59e0b]',
@@ -35,6 +38,13 @@ const colorClasses = {
     text: 'text-[#a78bfa]',
     bg: 'bg-[#8b5cf6]/10',
     ring: 'ring-[#8b5cf6]/50',
+  },
+  hermes: {
+    glow: 'shadow-[0_0_30px_rgba(16,185,129,0.4)]',
+    border: 'border-[#10b981]',
+    text: 'text-[#34d399]',
+    bg: 'bg-[#10b981]/10',
+    ring: 'ring-[#10b981]/50',
   },
 };
 

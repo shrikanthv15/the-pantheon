@@ -1,7 +1,8 @@
 'use client';
 
 import { motion } from 'framer-motion';
-import type { Agent } from '@/types';
+import type { ReactElement } from 'react';
+import type { Agent, AgentId } from '@/types';
 
 interface AgentCardProps {
   agent: Agent;
@@ -86,13 +87,64 @@ function MimirAvatar({ isHovered }: { isHovered: boolean }) {
   );
 }
 
-const avatarMap = {
+// Caduceus — Hermes's traditional symbol (two serpents around a winged staff)
+function HermesAvatar({ isHovered }: { isHovered: boolean }) {
+  return (
+    <svg
+      viewBox="0 0 100 100"
+      className={`w-24 h-24 ${isHovered ? 'spin-slow' : ''}`}
+      style={{ animationDuration: isHovered ? '3s' : '20s' }}
+    >
+      <defs>
+        <linearGradient id="hermes-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#10b981" />
+          <stop offset="100%" stopColor="#34d399" />
+        </linearGradient>
+      </defs>
+      {/* Central staff */}
+      <line x1="50" y1="12" x2="50" y2="88" stroke="url(#hermes-gradient)" strokeWidth="2" />
+      {/* Knob at top */}
+      <circle cx="50" cy="12" r="4" fill="url(#hermes-gradient)" />
+      {/* Wings */}
+      <path
+        d="M50,22 Q30,18 20,28 Q32,24 50,30 Q68,24 80,28 Q70,18 50,22 Z"
+        fill="url(#hermes-gradient)"
+        opacity="0.85"
+      />
+      {/* Serpent 1 (left) */}
+      <path
+        d="M50,35 Q35,42 50,52 Q65,62 50,72 Q40,78 50,85"
+        fill="none"
+        stroke="url(#hermes-gradient)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+      {/* Serpent 2 (right) */}
+      <path
+        d="M50,35 Q65,42 50,52 Q35,62 50,72 Q60,78 50,85"
+        fill="none"
+        stroke="url(#hermes-gradient)"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.75"
+      />
+    </svg>
+  );
+}
+
+const avatarMap: Record<AgentId, (p: { isHovered: boolean }) => ReactElement> = {
   kratos: KratosAvatar,
   loki: LokiAvatar,
   mimir: MimirAvatar,
+  hermes: HermesAvatar,
 };
 
-const colorClasses = {
+const colorClasses: Record<AgentId, {
+  gradient: string;
+  text: string;
+  border: string;
+  glow: string;
+}> = {
   kratos: {
     gradient: 'from-[#f59e0b] to-[#fbbf24]',
     text: 'text-[#fbbf24]',
@@ -110,6 +162,12 @@ const colorClasses = {
     text: 'text-[#a78bfa]',
     border: 'border-[#8b5cf6]/30',
     glow: 'hover:shadow-[0_0_30px_rgba(139,92,246,0.2)]',
+  },
+  hermes: {
+    gradient: 'from-[#10b981] to-[#34d399]',
+    text: 'text-[#34d399]',
+    border: 'border-[#10b981]/30',
+    glow: 'hover:shadow-[0_0_30px_rgba(16,185,129,0.2)]',
   },
 };
 

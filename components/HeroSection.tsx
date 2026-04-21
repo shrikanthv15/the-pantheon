@@ -48,9 +48,10 @@ function CountdownTimer({ targetHours = 8 }: { targetHours?: number }) {
 
 export function HeroSection({ agents, pipelineState }: HeroSectionProps) {
   const isActive = pipelineState.status !== 'idle';
-  const kratos = agents.find(a => a.id === 'kratos')!;
-  const loki = agents.find(a => a.id === 'loki')!;
-  const mimir = agents.find(a => a.id === 'mimir')!;
+  const kratos = agents.find((a) => a.id === 'kratos');
+  const loki = agents.find((a) => a.id === 'loki');
+  const mimir = agents.find((a) => a.id === 'mimir');
+  if (!kratos || !loki || !mimir) return null;
 
   return (
     <section id="status" className="relative min-h-[90vh] flex flex-col items-center justify-center px-4 pt-24 pb-16">
@@ -80,7 +81,7 @@ export function HeroSection({ agents, pipelineState }: HeroSectionProps) {
         transition={{ delay: 0.2 }}
         className="text-lg md:text-xl text-muted-foreground italic text-center mb-12"
       >
-        Three agents. One pipeline. Infinite intelligence.
+        Kratos leads, Loki scouts, Mimir reviews, Hermes remembers.
       </motion.p>
 
       {/* Pipeline visualization */}
