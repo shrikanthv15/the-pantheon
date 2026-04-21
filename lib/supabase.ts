@@ -187,9 +187,11 @@ function kindToLevel(kind: string): LogEntry['level'] {
 
 export async function getArticles(limit = 60): Promise<Article[]> {
   if (!supabase) return placeholderArticles;
+  // The existing articles table pre-dates this schema — it uses cycle_id,
+  // not task_id. Only select columns we know exist.
   const { data, error } = await supabase
     .from('articles')
-    .select('id,title,slug,summary,body,category,source_url,published_at,agent,status,task_id')
+    .select('id,title,slug,summary,body,category,source_url,published_at,agent,status,cycle_id')
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit);
   if (error || !data) {
@@ -207,12 +209,15 @@ export async function getArticles(limit = 60): Promise<Article[]> {
 export async function getPipelineState(): Promise<PipelineState> {
   if (!supabase) return placeholderPipelineState;
 
-  // Prefer the flat pipeline_state row if populated.
-  const { data: flat } = await supabase
+  // pipeline_state has a single row. Grab whichever is most recently
+  // touched (table predates this schema and its primary key differs
+  // between fresh installs and the original Kratos project).
+  const { data: rows } = await supabase
     .from('pipeline_state')
     .select('*')
-    .eq('singleton', 1)
-    .maybeSingle();
+    .order('last_run', { ascending: false, nullsFirst: false })
+    .limit(1);
+  const flat = rows && rows[0] ? rows[0] : null;
 
   if (flat && flat.last_run) {
     return {
@@ -528,26 +533,28 @@ export async function getAgentMetrics(): Promise<AgentMetrics[]> {
   });
 }
 
-/** Bar-chart data: articles produced per task envelope (latest 10). */
+/** Bar-chart data: articles produced per run, grouped by the day they
+ *  were published (works for both the legacy cycle_id column and the
+ *  new-world task envelopes). */
 export async function getArticlesPerRun(): Promise<{ run: string; articles: number }[]> {
   if (!supabase) return [];
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from('articles')
-    .select('task_id')
-    .not('task_id', 'is', null);
-  if (!data) return [];
+    .select('published_at')
+    .order('published_at', { ascending: true });
+  if (error || !data) return [];
   const counts = new Map<string, number>();
-  for (const r of data as { task_id: string }[]) {
-    counts.set(r.task_id, (counts.get(r.task_id) ?? 0) + 1);
+  for (const r of data as { published_at: string | null }[]) {
+    if (!r.published_at) continue;
+    const day = r.published_at.slice(0, 10);
+    counts.set(day, (counts.get(day) ?? 0) + 1);
   }
   return [...counts.entries()]
     .slice(-10)
-    .map(([id, articles], i) => ({
-      run: String(i + 1),
+    .map(([day, articles]) => ({
+      run: day.slice(5), // MM-DD for the x-axis label
       articles,
-      taskId: id,
-    }))
-    .map(({ run, articles }) => ({ run, articles }));
+    }));
 }
 
 // ────────────────────────────────────────────────────────────────────────

@@ -80,19 +80,32 @@ export default function PantheonPage() {
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async () => {
+    // Each query is isolated in its own try/catch so one schema drift
+    // (e.g. a column missing on a legacy table) can never nuke the whole
+    // page. If a fetch fails, that panel stays at its previous value and
+    // an error is logged — the rest still updates.
+    const safe = async <T,>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> => {
+      try {
+        return await fn();
+      } catch (err) {
+        console.warn(`[pantheon] ${label} failed:`, err);
+        return fallback;
+      }
+    };
+
     const [ag, mt, ar, ap, lg, ps, tk, hb] = await Promise.all([
-      getAgents(),
-      getAgentMetrics(),
-      getArticles(60),
-      getArticlesPerRun(),
-      getLogs(80),
-      getPipelineState(),
-      getTasks(10),
-      getHermesHeartbeat(),
+      safe('getAgents',        () => getAgents(),        [] as Agent[]),
+      safe('getAgentMetrics',  () => getAgentMetrics(),  [] as AgentMetrics[]),
+      safe('getArticles',      () => getArticles(60),    [] as Article[]),
+      safe('getArticlesPerRun',() => getArticlesPerRun(),[] as { run: string; articles: number }[]),
+      safe('getLogs',          () => getLogs(80),        [] as LogEntry[]),
+      safe('getPipelineState', () => getPipelineState(), pipelineState),
+      safe('getTasks',         () => getTasks(10),       [] as TaskEnvelope[]),
+      safe('getHermesHeartbeat', () => getHermesHeartbeat(), null as HermesHeartbeat | null),
     ]);
 
-    setAgents(ag);
-    setMetrics(mt);
+    if (ag.length) setAgents(ag);
+    if (mt.length) setMetrics(mt);
     setArticles(ar);
     setArticlesPerRun(ap);
     setLogs((prev) => (sameTs(prev, lg) ? prev : lg));
@@ -102,14 +115,14 @@ export default function PantheonPage() {
 
     const taskIds = tk.map((t) => t.id);
     const [fetchedSteps, fetchedNotes] = await Promise.all([
-      getAllTaskSteps(taskIds),
-      getAllTaskNotes(taskIds, 3),
+      safe('getAllTaskSteps', () => getAllTaskSteps(taskIds), [] as TaskStep[]),
+      safe('getAllTaskNotes', () => getAllTaskNotes(taskIds, 3), [] as TaskNote[]),
     ]);
     setSteps(fetchedSteps);
     setTaskNotes(fetchedNotes);
 
     setLoaded(true);
-  }, []);
+  }, [pipelineState]);
 
   // Initial load + Realtime subscriptions + 30 s safety refresh.
   useEffect(() => {
