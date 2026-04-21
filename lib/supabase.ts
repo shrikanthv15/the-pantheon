@@ -5,6 +5,8 @@ import type {
   AgentMetrics,
   AgentSession,
   AgentStatus,
+  AgentTokenTotals,
+  AgentTurn,
   Article,
   HermesHeartbeat,
   LogEntry,
@@ -340,15 +342,53 @@ export async function getRecentSessions(limit = 200): Promise<AgentSession[]> {
   return (data ?? []) as AgentSession[];
 }
 
+// --- agent_turns (real per-turn token + cost data) ---------------------
+
+export async function getAgentTokenTotals(): Promise<AgentTokenTotals[]> {
+  if (!supabase) return [];
+  const { data } = await supabase.from('agent_token_totals').select('*');
+  return (data ?? []) as AgentTokenTotals[];
+}
+
+export async function getRecentAgentTurns(limit = 60): Promise<AgentTurn[]> {
+  if (!supabase) return [];
+  const { data } = await supabase
+    .from('agent_turns')
+    .select(
+      'id,agent,session_id,ts,api,provider,model,stop_reason,' +
+        'input_tokens,output_tokens,cache_read_tokens,cache_write_tokens,' +
+        'total_tokens,cost_usd,text_preview,is_error',
+    )
+    .order('ts', { ascending: false })
+    .limit(limit);
+  return (data ?? []) as unknown as AgentTurn[];
+}
+
+export function subscribeToAgentTurns(cb: () => void) {
+  if (!supabase) return () => undefined;
+  const ch = supabase
+    .channel('pantheon:agent_turns')
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'agent_turns' }, cb)
+    .subscribe();
+  return () => {
+    supabase.removeChannel(ch);
+  };
+}
+
 // ────────────────────────────────────────────────────────────────────────
 // Derived views — shape Supabase rows into the component-friendly types.
 // ────────────────────────────────────────────────────────────────────────
 
-/** Convert task_events rows → LogEntry[] for LogFeed/LogTicker. */
+/** Convert task_events + agent_turns → LogEntry[] for LogFeed/LogTicker.
+ *  Task events show orchestration-level activity; assistant turns show
+ *  actual LLM round-trips. Merged + sorted so the UI gets the real story. */
 export async function getLogs(limit = 80): Promise<LogEntry[]> {
-  const events = await getRecentTaskEvents(limit);
-  if (events.length === 0) return placeholderLogs;
-  return events.map((e): LogEntry => {
+  const [events, turns] = await Promise.all([
+    getRecentTaskEvents(Math.floor(limit / 2)),
+    getRecentAgentTurns(Math.floor(limit / 2)),
+  ]);
+
+  const eventLogs: LogEntry[] = events.map((e) => {
     let message: string;
     if (typeof e.detail === 'string') {
       message = e.detail;
@@ -362,45 +402,55 @@ export async function getLogs(limit = 80): Promise<LogEntry[]> {
       message = `${e.kind}${e.step ? ` (step ${e.step})` : ''}`;
     }
     return {
-      id: e.id,
+      id: `ev-${e.id}`,
       timestamp: e.ts,
-      agent: (['kratos', 'loki', 'mimir', 'hermes'] as AgentId[]).includes(e.agent as AgentId)
+      agent: (['kratos', 'loki', 'mimir', 'hermes'] as AgentId[]).includes(
+        e.agent as AgentId,
+      )
         ? (e.agent as AgentId)
         : 'system',
       message: `${e.kind} — ${message} [${e.task_id.slice(-6)}]`,
       level: kindToLevel(e.kind),
     };
   });
+
+  const turnLogs: LogEntry[] = turns.map((t) => {
+    const cost = t.cost_usd ? ` · $${Number(t.cost_usd).toFixed(4)}` : '';
+    const preview = (t.text_preview ?? '').replace(/\s+/g, ' ').slice(0, 120);
+    const suffix = preview ? ` — ${preview}` : '';
+    return {
+      id: `tn-${t.id}`,
+      timestamp: t.ts,
+      agent: t.agent,
+      message: `${t.model ?? 'unknown'} · ${t.total_tokens.toLocaleString()} tok${cost}${suffix}`,
+      level: t.is_error ? 'error' : 'info',
+    };
+  });
+
+  const combined = [...eventLogs, ...turnLogs];
+  if (combined.length === 0) return placeholderLogs;
+  combined.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+  return combined.slice(0, limit);
 }
 
-/** Compose Agent[] from static metadata + most recent session per agent. */
+/** Compose Agent[] from static metadata + real token totals + in-flight task step. */
 export async function getAgents(): Promise<Agent[]> {
   if (!supabase) return placeholderAgents;
 
-  const sessions = await getRecentSessions(200);
-  const perAgent = new Map<AgentId, { last: AgentSession; count: number }>();
-  for (const s of sessions) {
-    const a = s.agent as AgentId;
-    if (!AGENT_ORDER.includes(a)) continue;
-    const existing = perAgent.get(a);
-    if (!existing || new Date(s.started_at) > new Date(existing.last.started_at)) {
-      perAgent.set(a, { last: s, count: (existing?.count ?? 0) + 1 });
-    } else {
-      existing.count += 1;
-    }
-  }
+  const [totals, tasks] = await Promise.all([getAgentTokenTotals(), getTasks(5)]);
+  const byAgent = new Map<AgentId, AgentTokenTotals>();
+  for (const t of totals) byAgent.set(t.agent, t);
 
-  // Current task -> which agent is currently running?
-  const tasks = await getTasks(5);
   const openTask = tasks.find((t) =>
-    ['executing', 'scouting', 'reviewing'].includes(t.status),
+    ['executing', 'scouting', 'reviewing', 'planned'].includes(t.status),
   );
   let openSteps: TaskStep[] = [];
   if (openTask) openSteps = await getTaskSteps(openTask.id);
 
   return AGENT_ORDER.map<Agent>((id) => {
     const info = STATIC_AGENTS[id];
-    const sess = perAgent.get(id);
+    const tot = byAgent.get(id);
+
     const runningForMe = openSteps.some(
       (s) => s.agent === (id as Exclude<AgentId, 'hermes'>) && s.status === 'running',
     );
@@ -411,25 +461,25 @@ export async function getAgents(): Promise<Agent[]> {
       ? 'running'
       : failedForMe
         ? 'error'
-        : sess?.last.status === 'failed'
-          ? 'error'
-          : 'idle';
+        : 'idle';
+
+    const modelDisplay =
+      tot?.last_model && tot?.last_provider
+        ? `${tot.last_provider}/${tot.last_model}`
+        : tot?.last_model ?? info.model;
 
     return {
       ...info,
-      model: sess?.last.model ? `${sess.last.provider ?? ''}/${sess.last.model}`.replace(/^\//, '') : info.model,
+      model: modelDisplay,
       status,
-      lastActive: sess?.last.started_at ?? new Date(0).toISOString(),
-      sessionCount: sess?.count ?? 0,
-      // We don't yet log per-session token counts — approximate from
-      // runtime as a rough "activity" signal until the token field exists.
-      tokensThisCycle: sess?.last.runtime_ms ? Math.round(sess.last.runtime_ms / 10) : 0,
+      lastActive: tot?.last_turn_at ?? new Date(0).toISOString(),
+      sessionCount: tot?.turns_total ?? 0,
+      tokensThisCycle: tot?.tokens_24h ?? 0,
     };
   });
 }
 
-/** Aggregate token budget per agent. Sums runtime_ms across last 24h as a
- *  proxy until a real tokens column exists. */
+/** Real 24h metrics from agent_token_totals view. */
 export async function getAgentMetrics(): Promise<AgentMetrics[]> {
   if (!supabase) {
     return AGENT_ORDER.map((id) => ({
@@ -440,33 +490,40 @@ export async function getAgentMetrics(): Promise<AgentMetrics[]> {
       memoryChunks: 0,
     }));
   }
-  const since = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
-  const { data } = await supabase
-    .from('agent_sessions')
-    .select('agent,runtime_ms,status')
-    .gte('started_at', since);
+  const [totals, turns] = await Promise.all([
+    getAgentTokenTotals(),
+    getRecentAgentTurns(200),
+  ]);
+  const totalsByAgent = new Map<AgentId, AgentTokenTotals>();
+  for (const t of totals) totalsByAgent.set(t.agent, t);
 
-  const byAgent = new Map<AgentId, { total: number; ok: number; fail: number }>();
-  for (const r of data ?? []) {
-    const a = r.agent as AgentId;
+  // Success rate from recent turns — non-error stop reasons.
+  const perAgent = new Map<AgentId, { ok: number; total: number }>();
+  for (const t of turns) {
+    const a = t.agent;
     if (!AGENT_ORDER.includes(a)) continue;
-    const rec = byAgent.get(a) ?? { total: 0, ok: 0, fail: 0 };
+    const rec = perAgent.get(a) ?? { ok: 0, total: 0 };
     rec.total += 1;
-    if (r.status === 'failed') rec.fail += 1;
-    else rec.ok += 1;
-    byAgent.set(a, rec);
+    if (!t.is_error) rec.ok += 1;
+    perAgent.set(a, rec);
   }
 
   return AGENT_ORDER.map<AgentMetrics>((id) => {
-    const rec = byAgent.get(id);
+    const tot = totalsByAgent.get(id);
+    const rate = perAgent.get(id);
     const uptime =
-      rec && rec.total > 0 ? `${Math.round((rec.ok / rec.total) * 1000) / 10}%` : '—';
+      rate && rate.total > 0 ? `${Math.round((rate.ok / rate.total) * 1000) / 10}%` : '—';
+    // Total bucket sized so the progress bar caps around ~10M tokens/day
+    // (generous), but always at least the observed 24h value +20% so bar
+    // is never full.
+    const tokensUsed = tot?.tokens_24h ?? 0;
+    const totalTokens = Math.max(100_000, Math.round(tokensUsed * 1.25));
     return {
       agentId: id,
-      tokensUsed: rec?.ok ?? 0, // count of successful runs as a proxy
-      totalTokens: Math.max(100, (rec?.total ?? 0) * 2),
+      tokensUsed,
+      totalTokens,
       uptime,
-      memoryChunks: rec?.total ?? 0,
+      memoryChunks: tot?.turns_24h ?? 0,
     };
   });
 }

@@ -157,3 +157,44 @@ export interface AgentSession {
   status: string | null;
   error: string | null;
 }
+
+// Per-turn record emitted by the gateway's jsonl session logs and
+// ingested into Supabase every 2 minutes by the VPS timer. One row
+// per assistant message = one round-trip to the LLM, with exact
+// token counts and cost from the model provider.
+export interface AgentTurn {
+  id: string;
+  agent: AgentId;
+  session_file: string;
+  session_id: string | null;
+  ts: string;
+  role: string;
+  api: string | null;
+  provider: string | null;
+  model: string | null;
+  stop_reason: string | null;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_write_tokens: number;
+  total_tokens: number;
+  cost_usd: number;
+  text_preview: string | null;
+  is_error: boolean;
+}
+
+// Aggregate row from the `agent_token_totals` view.
+export interface AgentTokenTotals {
+  agent: AgentId;
+  turns_total: number;
+  turns_24h: number;
+  tokens_total: number;
+  tokens_24h: number;
+  input_total: number;
+  output_total: number;
+  cost_usd_total: number;
+  cost_usd_24h: number;
+  last_turn_at: string | null;
+  last_model: string | null;
+  last_provider: string | null;
+}

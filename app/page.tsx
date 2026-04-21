@@ -23,6 +23,7 @@ import {
   getPipelineState,
   getTasks,
   isSupabaseConfigured,
+  subscribeToAgentTurns,
   subscribeToArticles,
   subscribeToHermesHeartbeat,
   subscribeToTaskEvents,
@@ -121,6 +122,7 @@ export default function PantheonPage() {
       subscribeToTaskEvents(refresh),
       subscribeToTasks(refresh),
       subscribeToHermesHeartbeat(refresh),
+      subscribeToAgentTurns(refresh),
     ];
     const iv = setInterval(refresh, 30_000);
     return () => {
