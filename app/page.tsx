@@ -100,7 +100,10 @@ export default function PantheonPage() {
       safe('getArticlesPerRun',() => getArticlesPerRun(),[] as { run: string; articles: number }[]),
       safe('getLogs',          () => getLogs(80),        [] as LogEntry[]),
       safe('getPipelineState', () => getPipelineState(), pipelineState),
-      safe('getTasks',         () => getTasks(10),       [] as TaskEnvelope[]),
+      // Pull a wider window so the TaskBoard archive expander has more
+      // history to show. Active vs archived split happens inside the
+      // component (last 24h = active).
+      safe('getTasks',         () => getTasks(40),       [] as TaskEnvelope[]),
       safe('getHermesHeartbeat', () => getHermesHeartbeat(), null as HermesHeartbeat | null),
     ]);
 
@@ -186,25 +189,16 @@ export default function PantheonPage() {
                 LIVE TASK BOARD
               </h2>
               <p className="text-muted-foreground">
-                Every envelope Kratos has opened, with the step each agent is running
-                and Mimir's commentary.
+                Active envelopes only. Old completed runs are tucked into the
+                archive — expand below to see them.
               </p>
-              {heartbeat && (
-                <p className="mt-2 text-xs font-mono text-muted-foreground">
-                  Hermes last synced{' '}
-                  <span className="text-[#34d399]">
-                    {new Date(heartbeat.last_sync_at).toLocaleTimeString('en-US', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      second: '2-digit',
-                      hour12: false,
-                    })}
-                  </span>{' '}
-                  UTC · {heartbeat.envelopes_seen} envelopes
-                </p>
-              )}
             </div>
-            <TaskBoard tasks={tasks} steps={steps} notes={taskNotes} />
+            <TaskBoard
+              tasks={tasks}
+              steps={steps}
+              notes={taskNotes}
+              heartbeat={heartbeat}
+            />
           </div>
         </motion.section>
 

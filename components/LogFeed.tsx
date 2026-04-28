@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Pause, Play, Trash2, Copy, Download } from 'lucide-react';
+import { Pause, Play, Copy, Download } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { LogEntry } from '@/types';
 
@@ -38,19 +38,29 @@ function formatTimestamp(timestamp: string): string {
 }
 
 export function LogFeed({ logs, compact = false }: LogFeedProps) {
+  // BUGFIX: previously did `useState(logs)` which captured the prop
+  // exactly once and never updated. Now visibleLogs is derived: it
+  // tracks `logs` live, and only freezes to a snapshot while paused.
   const [isPaused, setIsPaused] = useState(false);
-  const [visibleLogs, setVisibleLogs] = useState(logs);
+  const [snapshot, setSnapshot] = useState<LogEntry[] | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // TODO: Replace with Supabase realtime subscription to pipeline_logs table
-  
-  const handleClear = () => {
-    // TODO: Implement clear logs functionality
-    setVisibleLogs([]);
+  const visibleLogs = useMemo(
+    () => (isPaused && snapshot ? snapshot : logs),
+    [isPaused, snapshot, logs],
+  );
+
+  const togglePause = () => {
+    if (isPaused) {
+      setSnapshot(null);
+      setIsPaused(false);
+    } else {
+      setSnapshot(logs); // freeze to current state
+      setIsPaused(true);
+    }
   };
 
   const handleCopyAll = async () => {
-    // TODO: Implement copy to clipboard
     const logText = visibleLogs
       .map(log => `[${formatTimestamp(log.timestamp)}] [${log.agent.toUpperCase()}] ${log.message}`)
       .join('\n');
@@ -113,18 +123,11 @@ export function LogFeed({ logs, compact = false }: LogFeedProps) {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => setIsPaused(!isPaused)}
+            onClick={togglePause}
             className="h-8 px-2"
+            title={isPaused ? 'Resume live feed' : 'Pause feed'}
           >
             {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClear}
-            className="h-8 px-2"
-          >
-            <Trash2 className="w-4 h-4" />
           </Button>
           <Button
             variant="ghost"
