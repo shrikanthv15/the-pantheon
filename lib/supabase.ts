@@ -630,12 +630,18 @@ export const pipelineState = placeholderPipelineState;
 export async function getFbLeads(limit = 200): Promise<FbLead[]> {
   if (!supabase) return [];
   // Sort newest-first: prefer posted_at, fall back to discovered_at.
+  // Note: `cycle_id` is intentionally omitted — it only exists on the
+  // legacy project's fb_leads. The current (post-2026-05-13 migration)
+  // schema doesn't have it, and selecting it returns PG 42703.
   const { data, error } = await supabase
     .from('fb_leads')
-    .select('post_id,group_id,group_name,group_url,author_name,author_url,posted_at,discovered_at,body,image_urls,matches_filter,match_reason,pushed_at,user_reply,raw_html_hash,cycle_id')
+    .select('post_id,group_id,group_name,group_url,author_name,author_url,posted_at,discovered_at,body,image_urls,matches_filter,match_reason,pushed_at,user_reply,raw_html_hash')
     .order('discovered_at', { ascending: false })
     .limit(limit);
-  if (error || !data) return [];
+  if (error || !data) {
+    console.warn('[supabase] getFbLeads failed', error);
+    return [];
+  }
   const rows = data as unknown as FbLead[];
   // Re-sort client-side: posted_at desc (falls back to discovered_at).
   return [...rows].sort((a, b) => {
