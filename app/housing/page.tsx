@@ -11,8 +11,18 @@ import {
   getFbLeads,
   subscribeToFbLeads,
   setFbLeadReply,
+  getPipelineState,
 } from '@/lib/supabase';
-import type { FbLead } from '@/types';
+import type { FbLead, PipelineState } from '@/types';
+
+const IDLE_PIPELINE: PipelineState = {
+  status: 'idle',
+  last_run: null,
+  current_phase: null,
+  last_completed: null,
+  article_count: 0,
+  error: null,
+};
 
 /** Filter chips. */
 type LeadFilter = 'matches' | 'cortland' | 'all' | 'mine';
@@ -195,6 +205,7 @@ export default function HousingPage() {
   const [filter, setFilter] = useState<LeadFilter>('matches');
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
+  const [pipeline, setPipeline] = useState<PipelineState>(IDLE_PIPELINE);
 
   const refresh = useCallback(async () => {
     const rows = await getFbLeads(500);
@@ -204,6 +215,7 @@ export default function HousingPage() {
 
   useEffect(() => {
     refresh();
+    getPipelineState().then(setPipeline).catch(() => undefined);
     const unsub = subscribeToFbLeads(() => refresh());
     const interval = setInterval(refresh, 30_000);
     return () => {
@@ -332,7 +344,7 @@ export default function HousingPage() {
         </div>
       </main>
 
-      <Footer />
+      <Footer pipelineState={pipeline} />
     </div>
   );
 }
