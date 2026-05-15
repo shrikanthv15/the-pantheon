@@ -8,6 +8,7 @@ import type {
   AgentTokenTotals,
   AgentTurn,
   Article,
+  FbLead,
   HermesHeartbeat,
   LogEntry,
   PipelineState,
@@ -619,3 +620,61 @@ export function subscribeToHermesHeartbeat(cb: () => void) {
 export const agents = placeholderAgents;
 export { placeholderArticles, placeholderLogs };
 export const pipelineState = placeholderPipelineState;
+
+// ---------------------------------------------------------------------------
+// Facebook leads — populated by fb_scout.py on the VPS (every 15 min).
+// Surfaced on /housing. WhatsApp push for fb_scout is disabled in prod;
+// this dashboard is the read surface.
+// ---------------------------------------------------------------------------
+
+export async function getFbLeads(limit = 200): Promise<FbLead[]> {
+  if (!supabase) return [];
+  // Sort newest-first: prefer posted_at, fall back to discovered_at.
+  const { data, error } = await supabase
+    .from('fb_leads')
+    .select('post_id,group_id,group_name,group_url,author_name,author_url,posted_at,discovered_at,body,image_urls,matches_filter,match_reason,pushed_at,user_reply,raw_html_hash,cycle_id')
+    .order('discovered_at', { ascending: false })
+    .limit(limit);
+  if (error || !data) return [];
+  const rows = data as unknown as FbLead[];
+  // Re-sort client-side: posted_at desc (falls back to discovered_at).
+  return [...rows].sort((a, b) => {
+    const ka = a.posted_at ?? a.discovered_at;
+    const kb = b.posted_at ?? b.discovered_at;
+    return kb.localeCompare(ka);
+  });
+}
+
+export function subscribeToFbLeads(cb: (row: unknown) => void) {
+  if (!supabase) return () => undefined;
+  const ch = supabase
+    .channel('fb_leads_feed')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'fb_leads' },
+      (payload) => cb(payload.new),
+    )
+    .on(
+      'postgres_changes',
+      { event: 'UPDATE', schema: 'public', table: 'fb_leads' },
+      (payload) => cb(payload.new),
+    )
+    .subscribe();
+  return () => {
+    supabase.removeChannel(ch);
+  };
+}
+
+// User-facing action: mark a lead as "interested" / "skip" / freeform.
+// Just writes the user_reply column; doesn't affect scrape behaviour.
+export async function setFbLeadReply(
+  post_id: string,
+  reply: string | null,
+): Promise<boolean> {
+  if (!supabase) return false;
+  const { error } = await supabase
+    .from('fb_leads')
+    .update({ user_reply: reply })
+    .eq('post_id', post_id);
+  return !error;
+}

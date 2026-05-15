@@ -73,6 +73,27 @@ export interface AgentMetrics {
   memoryChunks: number;
 }
 
+// Facebook group scraper output — rows from public.fb_leads
+// Populated by /home/shri/.hermes/bin/fb_scout.py on the VPS every 15 min.
+export interface FbLead {
+  post_id: string;
+  group_id: string;
+  group_name: string | null;
+  group_url: string | null;
+  author_name: string | null;
+  author_url: string | null;
+  posted_at: string | null;        // ISO 8601 if extractable, else null
+  discovered_at: string;           // ISO 8601 — when scraper first saw it
+  body: string | null;
+  image_urls: string[] | null;
+  matches_filter: boolean;
+  match_reason: string | null;     // "loc:Allen | room:roommate | female:Indian female"
+  pushed_at: string | null;        // legacy — when WhatsApp would have fired (now unused)
+  user_reply: string | null;       // user marks "interested" / "skip"
+  raw_html_hash: string | null;
+  cycle_id?: string | null;        // present on some legacy rows
+}
+
 // -----------------------------------------------------------------------
 // Task envelope layer — written by Kratos/Loki/Mimir on the VPS,
 // synced into Supabase by Hermes. Dashboard reads them through the anon

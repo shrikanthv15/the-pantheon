@@ -106,20 +106,23 @@ export function Navigation() {
 
           {/* Nav links */}
           <div className="hidden md:flex items-center gap-1">
-            <NavLink href="#status" isActive={activeSection === 'status'} color={sectionColors.status}>
+            <NavLink href="/#status" isActive={activeSection === 'status'} color={sectionColors.status}>
               Status
             </NavLink>
-            <NavLink href="#agents" isActive={activeSection === 'agents'} color={sectionColors.agents}>
+            <NavLink href="/#agents" isActive={activeSection === 'agents'} color={sectionColors.agents}>
               Agents
             </NavLink>
-            <NavLink href="#feed" isActive={activeSection === 'feed'} color={sectionColors.feed}>
+            <NavLink href="/#feed" isActive={activeSection === 'feed'} color={sectionColors.feed}>
               Feed
             </NavLink>
-            <NavLink href="#articles" isActive={activeSection === 'articles'} color={sectionColors.articles}>
+            <NavLink href="/#articles" isActive={activeSection === 'articles'} color={sectionColors.articles}>
               Articles
             </NavLink>
-            <NavLink href="#logs" isActive={activeSection === 'logs'} color={sectionColors.logs}>
+            <NavLink href="/#logs" isActive={activeSection === 'logs'} color={sectionColors.logs}>
               Logs
+            </NavLink>
+            <NavLink href="/housing" isActive={false} color="#fbbf24">
+              🏠 Housing
             </NavLink>
           </div>
 
